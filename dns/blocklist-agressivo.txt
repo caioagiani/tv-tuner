@@ -1,0 +1,57 @@
+# TV Tuner — bloqueio AGRESSIVO. Fonte: seção Samsung de
+# https://github.com/Perflyst/PiHoleBlocklist/blob/master/SmartTV.txt
+# Pode quebrar: loja de apps, ícones, atualização de firmware, avisos, Samsung TV Plus.
+# Teste por alguns dias; se algo parar, tire da lista (samsungcloudsolution.* é o suspeito usual).
+abtauthprd.samsungcloudsolution.com
+ad.samsungadhub.com
+ads.samsungads.com
+amauthprd.samsungcloudsolution.com
+api-hub.samsungyosemite.com
+apu.samsungelectronics.com
+bpu.samsungelectronics.com
+cdn.samsungcloudsolution.net
+cpu.samsungelectronics.com
+dpu.samsungelectronics.com
+fkp.samsungcloudsolution.com
+fkp.samsungcloudsolution.net
+gamespromotion.samsungcloudsolution.com
+gld.samsungosp.com
+kpu.samsungelectronics.com
+log-1.samsungacr.com
+log-2.samsungacr.com
+log-3.samsungacr.com
+log-ingestion-eu.samsungacr.com
+log-ingestion.samsungacr.com
+musicid.samsungcloudsolution.com
+notice.samsungcloudsolution.com
+noticecdn.samsungcloudsolution.com
+noticefile.samsungcloudsolution.com
+oempprd.samsungcloudsolution.com
+oempprd.samsungcloudsolution.net
+openapi.samsung.com
+osb-apps-v2.samsungqbe.com
+osb-eusvc.samsungqbe.com
+osb-krsvc.samsungqbe.com
+osb.samsungqbe.com
+prderrordumphsm.samsungcloudsolution.com
+prov.samsungcloudsolution.com
+rd.samsungadhub.com
+samsungacr.com
+samsungadhub.com
+samsungads.com
+samsungcloudsolution.com
+samsungcloudsolution.net
+samsungelectronics.com
+samsungqbe.com
+sas.samsungcloudsolution.com
+sca.samsung.com
+targeted-config-test.samsungacr.com
+test.samsungrm.net
+upu.samsungelectronics.com
+us-api.samsungyosemite.com
+vdterms.samsungcloudsolution.com
+www.samsungotn.net
+www.samsungrm.net
+xpu.samsungelectronics.com
+ypu.samsungelectronics.com
+zpu.samsungelectronics.com

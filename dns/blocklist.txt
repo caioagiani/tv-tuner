@@ -1,0 +1,8 @@
+# TV Tuner — bloqueio LEVE (anúncio + ACR "o que você assiste").
+# Baixo risco de quebrar app/Smart Hub. Coloque no NextDNS, Pi-hole, AdGuard Home
+# ou no roteador. Bloquear o domínio pega os subdomínios na maioria dessas ferramentas.
+samsungads.com
+samsungadhub.com
+samsungacr.com
+log-ingestion.samsungacr.com
+log-config.samsungacr.com
