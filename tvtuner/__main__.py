@@ -1,15 +1,15 @@
-"""tv — controle e otimização de TV Samsung (Tizen) pela rede.
+"""tv — controle e otimização de TV pela rede (Samsung Tizen e Roku).
 
     tv discover                 acha TVs na rede (salva se houver uma só)
     tv use 192.168.1.50          escolhe a TV
     tv info                     modelo, energia, modo dev, portas
-    tv pair                     pede "Permitir" na TV e guarda o token
+    tv pair                     pede "Permitir" na TV e guarda o token (Samsung)
     tv key HOME VOLUP ...       envia teclas
     tv macro <nome>             roda uma sequência (tv macro sem nome lista)
     tv apps                     lista apps instalados
     tv launch <appId|nome>      abre um app
     tv text "busca"             digita no teclado virtual aberto
-    tv browser <url>            abre o navegador da TV numa URL
+    tv browser <url>            abre o navegador da TV numa URL (Samsung)
     tv on | tv off              liga (Wake-on-LAN) / desliga
     tv doctor [--fix]           diagnóstico: o que está certo, o que ajustar
     tv panel [--pin 1234]       painel web para controlar pelo celular
@@ -24,8 +24,8 @@ import plistlib
 import subprocess
 import sys
 
-from . import config, discover, macros, wol
-from .remote import Remote, PairingError, open_remote
+from . import config, discover, drivers, macros
+from .remote import PairingError, open_remote
 
 ROOT = __file__.rsplit("/tvtuner/", 1)[0]
 
@@ -37,59 +37,71 @@ def _tv_ip(args):
     return ip
 
 
-def _save_tv(ip, dev):
-    mac = dev.get("wifiMac")
-    config.remember(ip, mac=mac, model=dev.get("modelName"), name=dev.get("name"))
+def _drv(args):
+    return drivers.get(_tv_ip(args))
+
+
+def _save_tv(ip, d):
+    config.remember(ip, brand=d["brand"], mac=d["mac"], model=d["model"], name=d["name"])
     config.select(ip)
-    print(f"TV salva: {dev.get('modelName')} em {ip}")
+    print(f"TV salva: {d['model']} ({d['brand']}) em {ip}")
 
 
 def cmd_discover(args):
-    found = discover.scan(args.cidr)
+    found = drivers.scan(args.cidr)
     if not found:
-        sys.exit("Nenhuma TV Samsung respondeu na porta 8001. Ela está ligada e na mesma rede?")
+        sys.exit("Nenhuma TV respondeu (Samsung na 8001, Roku na 8060). Ela está ligada e na mesma rede?")
     for ip, d in found:
-        dv = d["device"]
-        print(f"{ip:16} {dv.get('modelName', '?'):18} {dv.get('name', '')}  [{dv.get('PowerState', '?')}]")
+        print(f"{ip:16} {d['brand']:8} {d['model'] or '?':22} {d['name'] or ''}  [{d['power']}]")
     if len(found) == 1 and not config.load().get("ip"):
-        _save_tv(found[0][0], found[0][1]["device"])
+        _save_tv(*found[0])
     elif not config.load().get("ip"):
         print("\nMais de uma TV. Escolha com: tv use <ip>")
 
 
 def cmd_use(args):
-    _save_tv(args.target, discover.info(args.target)["device"])
+    d = drivers.probe(args.target, timeout=3)
+    if not d:
+        sys.exit(f"Nenhuma TV conhecida responde em {args.target}.")
+    _save_tv(args.target, d)
 
 
 def cmd_info(args):
     ip = _tv_ip(args)
-    d = discover.info(ip)
-    dv = d["device"]
-    keys = ["modelName", "model", "name", "OS", "PowerState", "developerMode", "developerIP",
-            "TokenAuthSupport", "VoiceSupport", "resolution", "networkType", "wifiMac"]
-    for k in keys:
-        if k in dv:
-            print(f"{k:18} {dv[k]}")
-    print(f"{'apiVersion':18} {d.get('version')}")
-    print("\nportas:")
-    for port, what in [(8001, "API/remoto"), (8002, "remoto TLS"), (26101, "SDB (modo dev)"), (9197, "DMR/UPnP")]:
-        print(f"  {port:6} {'aberta ' if discover.port_open(ip, port) else 'fechada'}  {what}")
-    print(f"\ntoken salvo: {'sim' if config.tv(ip).get('token') else 'não (rode tv pair)'}")
+    drv = drivers.get(ip)
+    d = drv.info(timeout=3)
+    if not d:
+        sys.exit(f"A TV não responde em {ip}.")
+    for k in ("brand", "model", "name", "os", "power", "mac"):
+        if d.get(k):
+            print(f"{k:18} {d[k]}")
+    print(f"{'suporta':18} {', '.join(sorted(drv.caps))}")
+    if drv.brand == "samsung":
+        dv = d["raw"]
+        for k in ("developerMode", "developerIP", "TokenAuthSupport", "resolution", "networkType"):
+            if k in dv:
+                print(f"{k:18} {dv[k]}")
+        print("\nportas:")
+        for port, what in [(8001, "API/remoto"), (8002, "remoto TLS"), (26101, "SDB (modo dev)"), (9197, "DMR/UPnP")]:
+            print(f"  {port:6} {'aberta ' if discover.port_open(ip, port) else 'fechada'}  {what}")
+        print(f"\ntoken salvo: {'sim' if config.tv(ip).get('token') else 'não (rode tv pair)'}")
 
 
 def cmd_pair(args):
-    ip = _tv_ip(args)
+    drv = _drv(args)
+    if "pair" not in drv.caps:
+        print(f"{drv.label} não precisa de pareamento.")
+        return
     print("Olhe a TV e escolha Permitir...")
     try:
-        with Remote(ip, None, timeout=60):
-            print("Pareado. Token salvo em", config.PATH)
+        drv.pair(timeout=60)
+        print("Pareado. Token salvo em", config.PATH)
     except PairingError as e:
         sys.exit(str(e))
 
 
 def cmd_key(args):
-    with open_remote(args.ip) as r:
-        r.keys(args.keys, delay=args.delay)
+    _drv(args).keys(args.keys, delay=args.delay)
 
 
 def cmd_macro(args):
@@ -100,13 +112,11 @@ def cmd_macro(args):
         return
     if args.name not in m:
         sys.exit(f"Macro desconhecida: {args.name}. Lista: tv macro")
-    with open_remote(args.ip) as r:
-        r.keys(m[args.name], delay=args.delay)
+    _drv(args).keys(m[args.name], delay=args.delay)
 
 
 def cmd_apps(args):
-    with open_remote(args.ip) as r:
-        apps = r.apps()
+    apps = _drv(args).apps()
     if args.json:
         print(json.dumps(apps, indent=2, ensure_ascii=False))
         return
@@ -115,36 +125,33 @@ def cmd_apps(args):
 
 
 def cmd_launch(args):
-    with open_remote(args.ip) as r:
-        target = args.app
-        if "." not in target and not target.isdigit():
-            match = [a for a in r.apps() if target.lower() in a.get("name", "").lower()]
-            if not match:
-                sys.exit(f"Nenhum app com '{target}' no nome. Veja: tv apps")
-            target = match[0]["appId"]
-            print(f"Abrindo {match[0]['name']} ({target})")
-        r.launch(target)
+    drv = _drv(args)
+    target = args.app
+    if "." not in target and not target.isdigit():
+        match = [a for a in drv.apps() if target.lower() in a.get("name", "").lower()]
+        if not match:
+            sys.exit(f"Nenhum app com '{target}' no nome. Veja: tv apps")
+        target = match[0]["appId"]
+        print(f"Abrindo {match[0]['name']} ({target})")
+    drv.launch(target)
 
 
 def cmd_text(args):
-    with open_remote(args.ip) as r:
-        r.text(args.value)
+    _drv(args).text(args.value)
 
 
 def cmd_browser(args):
-    with open_remote(args.ip) as r:
-        r.browser(args.url)
+    _drv(args).browser(args.url)
 
 
 def cmd_on(args):
-    how = wol.power_on(_tv_ip(args), config.tv(_tv_ip(args)).get("mac"))
+    how = _drv(args).power_on()
     print({"already": "Já estava ligada.", "key": "Ligando (estava em espera).",
-           "wol": "TV não respondeu; Wake-on-LAN enviado. Se não ligar: 'Ligar com dispositivo móvel' (tv checklist)."}[how])
+           "wol": "TV não respondeu; Wake-on-LAN enviado. Se não ligar: ative ligar pela rede no menu da TV."}[how])
 
 
 def cmd_off(args):
-    with open_remote(args.ip) as r:
-        r.key("KEY_POWER")
+    _drv(args).power_off()
 
 
 def cmd_panel(args):
@@ -181,6 +188,8 @@ CHECKLIST = [
 
 
 def cmd_checklist(args):
+    if drivers.brand_of(_tv_ip(args)) != "samsung":
+        sys.exit("O checklist é do menu da Samsung. Para esta TV: tv doctor (traz a lista do menu dela).")
     print("Os nomes podem variar um pouco com o firmware. Enter avança, q sai.\n")
     remote = None
     try:

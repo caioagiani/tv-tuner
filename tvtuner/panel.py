@@ -20,13 +20,12 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import quote, unquote
 
-from . import catalog, config, discover, macros, rest, upnp, wol
-from .remote import Remote
+from . import config, discover, drivers, macros
 
 STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "panel")
 MEDIA_DIR = os.path.join(tempfile.gettempdir(), "tvtuner-media")
-HOME_APP = "TvTunerHom.TvTuner"
 TLS_DIR = os.path.join(config.DIR, "tls")
+APP_ICONS = {}                  # (ip, appId) -> (bytes, content-type)
 WHISPER_DIR = os.path.join(config.DIR, "whisper")
 
 
@@ -201,184 +200,61 @@ def transcribe(data):
 
 
 class TV:
-    """Uma conexão websocket reaproveitada entre toques.
+    """Estado e cache de uma TV, sobre o driver da marca dela (drivers/).
 
-    Quando a TV desliga, a conexão morre sem avisar e o próximo envio esperava o
-    tempo-limite inteiro (30 s) — com o botão de ligar na fila atrás dele. Por
-    isso: tempo-limite curto, e conexão parada há mais de IDLE_S é refeita.
-    """
-    IDLE_S = 30          # sem resposta da TV há tanto tempo = conexão morta
-    PING_S = 8
+    O driver fala com a TV; aqui fica o que o painel precisa por cima: cache
+    curto do estado (vários celulares não multiplicam o custo), lista de apps
+    e os valores que o UPnP empurra."""
 
     def __init__(self, ip, emit=None):
         self.ip = ip
-        self.emit = emit or (lambda kind, data: None)
+        self.drv = drivers.get(ip, emit)
         self.live = {}              # volume/mudo/mídia empurrados pelo UPnP (GENA)
         self.live_at = 0.0
-        self.lock = threading.Lock()
-        self.remote = None
-        self.used = 0.0             # última vez que a TV respondeu (tecla ou pong)
         self.apps = None            # catálogo instalado, (quando, lista)
         self.state = (0.0, None)    # cache curto do /api/state
-        self.last_app = None        # app visível na última leitura
-        self.pool = ThreadPoolExecutor(max_workers=12)
-        threading.Thread(target=self._keepalive, daemon=True).start()
+        self.pool = ThreadPoolExecutor(max_workers=6)
 
-    def _keepalive(self):
-        """Mantém o websocket aberto. Abrir custa 0,2–3,7 s (medido); derrubar
-        por ociosidade fazia a 1ª tecla depois de uma pausa demorar isso tudo.
-        Aqui só se ENVIA o ping: quem lê a resposta é o leitor da conexão, e
-        sem nada lido por IDLE_S a conexão é dada como morta."""
-        while True:
-            time.sleep(self.PING_S)
-            if not self.lock.acquire(blocking=False):
-                continue
-            try:
-                r = self.remote
-                if r is None:
-                    # Pré-conecta quando a TV está ligada e pareada: o 1º toque já sai rápido.
-                    st = self.state[1]
-                    if st and st.get("power") == "on" and config.tv(self.ip).get("token"):
-                        try:
-                            self._get()
-                        except Exception:
-                            self._drop()
-                    continue
-                if getattr(r, "dead", False) or time.time() - self.used > self.IDLE_S:
-                    self._drop()
-                    continue
-                try:
-                    r.ws.ping()
-                except Exception:
-                    self._drop()
-            finally:
-                self.lock.release()
-
-    def _reader(self, r):
-        """Lê tudo o que a TV manda nesta conexão: pong (prova de vida) e
-        eventos — o que importa é o teclado da TV abrindo (ms.remote.ime*)."""
-        import websocket as _ws
-        while self.remote is r:
-            try:
-                op, frame = r.ws.recv_data_frame(True)
-            except (_ws.WebSocketTimeoutException, TimeoutError):
-                continue
-            except Exception:
-                r.dead = True
-                return
-            self.used = time.time()
-            if op == _ws.ABNF.OPCODE_CLOSE:
-                r.dead = True
-                return
-            if op != _ws.ABNF.OPCODE_TEXT:
-                continue
-            try:
-                msg = json.loads(frame.data)
-            except ValueError:
-                continue
-            ev = msg.get("event") or ""
-            if ev.startswith("ms.remote.ime"):
-                self.emit("ime", {"event": ev, "open": ev != "ms.remote.imeEnd", "data": msg.get("data")})
-            elif ev not in ("ms.channel.ready", "ms.channel.clientConnect", "ms.channel.clientDisconnect"):
-                print("evento da TV:", ev, str(msg.get("data"))[:200], flush=True)
-
-    def _drop(self):
-        if self.remote:
-            try:
-                self.remote.close()
-            except Exception:
-                pass
-        self.remote = None
-
-    def _get(self):
-        if self.remote is not None and (getattr(self.remote, "dead", False) or time.time() - self.used > self.IDLE_S):
-            self._drop()
-        if self.remote is None:
-            token = config.tv(self.ip).get("token")
-            if not token:
-                # Sem token a conexão abriria o "Permitir?" na TV a cada toque.
-                raise RuntimeError("TV não pareada — teclas e texto pedem pareamento (toque no nome da TV)")
-            self.remote = Remote(self.ip, token, timeout=6).connect()
-            self.used = time.time()
-            threading.Thread(target=self._reader, args=(self.remote,), daemon=True).start()
-        return self.remote
-
-    def run(self, fn):
-        with self.lock:
-            for attempt in (1, 2):
-                try:
-                    out = fn(self._get())
-                    self.used = time.time()
-                    return out
-                except Exception:
-                    self._drop()
-                    if attempt == 2:
-                        raise
-
-    def power_on(self):
-        # Fora da fila dos toques e com conexão própria: ligar não espera ninguém.
-        with self.lock:
-            self._drop()
-        return wol.power_on(self.ip, config.tv(self.ip).get("mac"))
-
-    def launch(self, app_id):
-        # REST abre direto (sem websocket); o app de desenvolvedor só abre pelo SDB.
-        if app_id == HOME_APP:
-            from .sdb import Sdb
-            out = Sdb(self.ip).shell("0 was_execute " + app_id, r"launched|spend time", 20)
-            if "launched" not in out:
-                raise RuntimeError("A TV não abriu o TV Tuner (Modo Desenvolvedor desligado?)")
-            return
-        rest.app_open(self.ip, app_id)
+    def __getattr__(self, name):
+        if name == "drv":
+            raise AttributeError(name)
+        # key, keys, text, browser, launch, power_on, power_off, set_volume...: direto no driver.
+        return getattr(self.drv, name)
 
     def installed(self):
         # Lista vazia é a TV ocupada/abrindo app, não "nenhum app": não guarda.
         if not self.apps or time.time() - self.apps[0] > 300:
-            found = catalog.installed(self.ip)
-            if not found:
-                found = catalog.installed(self.ip)
+            found = self.drv.apps()
             self.apps = (time.time(), found) if found else None
             return found
         return self.apps[1]
 
-    def current_app(self):
-        def visible(a):
-            try:
-                return a if rest.app_status(self.ip, a["appId"]).get("visible") else None
-            except Exception:
-                return None
-        # O app que estava aberto quase sempre continua: 1 pedido à TV em vez de 8.
-        if self.last_app and visible(self.last_app):
-            return self.last_app
-        hit = [a for a in self.pool.map(visible, self.installed()) if a]
-        self.last_app = hit[0] if hit else None
-        return self.last_app
-
     def snapshot(self):
-        """Estado para o controle "vivo". Cache de 1 s: vários celulares não multiplicam o custo."""
+        """Estado para o controle "vivo". Cache de 1 s."""
         at, st = self.state
         if st and time.time() - at < 1.0:
             return st
+        drv = self.drv
+        base = {"ip": self.ip, "brand": drv.brand, "caps": sorted(drv.caps), "paired": drv.paired()}
         try:
-            d = discover.info(self.ip, timeout=1.5)["device"]
+            d = drv.info(timeout=1.5)
         except Exception:
-            st = {"online": False, "power": "off", "ip": self.ip, "paired": bool(config.tv(self.ip).get("token")),
-                  "name": config.tv(self.ip).get("name")}
+            d = None
+        if not d:
+            st = {"online": False, "power": "off", "name": config.tv(self.ip).get("name"), **base}
             self.state = (time.time(), st)
             return st
-        st = {"online": True, "power": d.get("PowerState"), "name": d.get("name"), "model": d.get("modelName")}
-        st["ip"] = self.ip
-        st["paired"] = bool(config.tv(self.ip).get("token"))
+        st = {"online": True, "power": d["power"], "name": d["name"], "model": d["model"], **base}
         if st["power"] == "on":
             # Com assinatura UPnP viva, volume/mudo/mídia já chegam empurrados:
             # só o app aberto ainda precisa de pergunta.
             pushed = self.live if time.time() - self.live_at < 290 and {"volume", "mute", "media"} <= set(self.live) else None
-            jobs = {"app": self.pool.submit(self.current_app)}
+            jobs = {"app": self.pool.submit(drv.current_app, self.installed)}
             if pushed:
                 st.update(volume=pushed["volume"], mute=pushed["mute"], media=pushed["media"])
             else:
-                jobs.update(volume=self.pool.submit(upnp.volume, self.ip), mute=self.pool.submit(upnp.muted, self.ip),
-                            media=self.pool.submit(upnp.transport, self.ip))
+                jobs.update(volume=self.pool.submit(drv.volume), mute=self.pool.submit(drv.muted),
+                            media=self.pool.submit(drv.media))
             for k, f in jobs.items():
                 try:
                     st[k] = f.result(timeout=4)
@@ -467,11 +343,10 @@ class Hub:
         sozinhos quando mudam — inclusive pelo controle físico."""
         if not self.callback:
             return
-        for svc in ("RenderingControl1", "AVTransport1"):
+        for svc, url in self.current().drv.event_urls():
             sid, until = self.gena.get(svc, (None, 0))
             if time.time() < until - 60:
                 continue
-            url = f"http://{self.ip}:9197/upnp/event/{svc}"
             hdr = {"SID": sid, "TIMEOUT": "Second-300"} if sid else \
                   {"CALLBACK": f"<{self.callback}/{self.ip}>", "NT": "upnp:event", "TIMEOUT": "Second-300"}
             try:
@@ -509,36 +384,31 @@ class Hub:
     def listing(self, rescan=False):
         """Salvas + achadas na rede, com estado de cada uma."""
         if rescan or time.time() - self.found[0] > 120:
-            self.found = (time.time(), discover.scan())
+            self.found = (time.time(), drivers.scan())
         saved = config.tvs()
         rows = {}
         for ip, d in self.found[1]:
-            dv = d["device"]
-            rows[ip] = {"ip": ip, "name": dv.get("name"), "model": dv.get("modelName"),
-                        "power": dv.get("PowerState"), "online": True, "mac": dv.get("wifiMac")}
+            rows[ip] = {"ip": ip, "brand": d["brand"], "name": d["name"], "model": d["model"],
+                        "power": d["power"], "online": True}
         def probe(ip):
-            try:
-                dv = discover.info(ip, timeout=1.2)["device"]
-                return ip, {"power": dv.get("PowerState"), "online": True}
-            except Exception:
-                return ip, {"power": "off", "online": False}
+            d = drivers.probe(ip, saved[ip].get("brand"), timeout=1.2)
+            return ip, {"power": d["power"], "online": True} if d else {"power": "off", "online": False}
         with ThreadPoolExecutor(max_workers=8) as ex:
             live = dict(ex.map(probe, [ip for ip in saved if ip not in rows]))
         for ip, v in saved.items():
-            row = rows.setdefault(ip, {"ip": ip, "name": v.get("name"), "model": v.get("model"), **live.get(ip, {})})
+            row = rows.setdefault(ip, {"ip": ip, "brand": v.get("brand"), "name": v.get("name"),
+                                       "model": v.get("model"), **live.get(ip, {})})
             row["saved"] = True
         for ip, row in rows.items():
-            row["paired"] = bool(saved.get(ip, {}).get("token"))
+            needs = "pair" in drivers.DRIVERS.get(row.get("brand") or "samsung", drivers.Driver).caps
+            row["paired"] = not needs or bool(saved.get(ip, {}).get("token"))
             row["current"] = ip == self.ip
-            row.pop("mac", None)
         return sorted(rows.values(), key=lambda r: (not r["current"], not r.get("saved"), r["ip"]))
 
     def _learn(self, ip):
-        try:
-            dv = discover.info(ip, timeout=2)["device"]
-        except Exception:
-            return
-        config.remember(ip, name=dv.get("name"), model=dv.get("modelName"), mac=dv.get("wifiMac"))
+        d = drivers.probe(ip, config.tv(ip).get("brand"), timeout=2)
+        if d:
+            config.remember(ip, brand=d["brand"], name=d["name"], model=d["model"], mac=d["mac"])
 
     def select(self, ip):
         self._learn(ip)
@@ -546,18 +416,17 @@ class Hub:
         self.ip = ip
 
     def pair(self, ip):
-        # Bloqueia até alguém responder ao "Permitir?" na TV (ela desiste em ~30 s).
         self._learn(ip)
-        Remote(ip, None, timeout=40).connect().close()
-        if ip in self.tvs:
-            self.tvs[ip].invalidate()
+        t = self.tvs.get(ip)
+        (t.drv if t else drivers.get(ip)).pair()
+        if t:
+            t.invalidate()
 
     def forget(self, ip):
         config.forget(ip)
         t = self.tvs.pop(ip, None)
         if t:
-            with t.lock:
-                t._drop()
+            t.drv.close()
 
 
 def make_handler(tv, pin, port):
@@ -683,6 +552,27 @@ def make_handler(tv, pin, port):
             self.end_headers()
             self.wfile.write(body)
 
+        def _appicon(self):
+            # /appicon/<id>: ícone que a própria TV entrega (Roku). Sem PIN pelo mesmo
+            # motivo do /icons/; guardado em memória, por TV.
+            m = re.match(r"^/appicon/([A-Za-z0-9._-]{1,64})$", self.path)
+            cur = tv.current()
+            if not m or "icons" not in cur.drv.caps:
+                return self._json(404, {"error": "not found"})
+            key = (cur.ip, m.group(1))
+            if key not in APP_ICONS:
+                try:
+                    APP_ICONS[key] = cur.drv.icon(m.group(1))
+                except Exception:
+                    return self._json(404, {"error": "sem ícone"})
+            body, ctype = APP_ICONS[key]
+            self.send_response(200)
+            self.send_header("Content-Type", ctype or "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_HEAD(self):
             if self.path.startswith("/media/"):
                 return self._media()
@@ -703,6 +593,8 @@ def make_handler(tv, pin, port):
                 return self._media()
             if self.path.startswith("/icons/"):
                 return self._icon()
+            if self.path.startswith("/appicon/"):
+                return self._appicon()
             if not self._authorized():
                 return self._json(401, {"error": "pin"})
             if self.path.startswith("/api/events"):
@@ -745,7 +637,7 @@ def make_handler(tv, pin, port):
                     left -= len(chunk)
             mime = self.headers.get("Content-Type") or mimetypes.guess_type(name)[0] or "audio/mpeg"
             url = f"http://{discover.local_ip()}:{port}/media/{token}/{quote(name)}"
-            upnp.play_url(tv.ip, url, mime, os.path.splitext(name)[0])
+            tv.play_url(url, mime, os.path.splitext(name)[0])
 
         def do_POST(self):
             if not self._authorized():
@@ -761,16 +653,16 @@ def make_handler(tv, pin, port):
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n) or b"{}")
                 if self.path == "/api/key":
-                    tv.run(lambda r: r.key(body["key"]))
+                    tv.key(body["key"])
                 elif self.path == "/api/macro":
                     seq = macros.load()[body["name"]]
-                    tv.run(lambda r: r.keys(seq))
+                    tv.keys(seq)
                 elif self.path == "/api/launch":
                     tv.launch(body["appId"])
                 elif self.path == "/api/text":
-                    tv.run(lambda r: r.text(body["text"]))
+                    tv.text(body["text"])
                 elif self.path == "/api/browser":
-                    tv.run(lambda r: r.browser(body["url"]))
+                    tv.browser(body["url"])
                 elif self.path == "/api/tvs/scan":
                     return self._json(200, tv.listing(rescan=True))
                 elif self.path == "/api/tvs/select":
@@ -787,21 +679,17 @@ def make_handler(tv, pin, port):
                     tv.invalidate()
                     return self._json(200, {"ok": True, "how": how})
                 elif self.path == "/api/volume":
-                    level = upnp.set_volume(tv.ip, body["level"])
+                    level = tv.set_volume(body["level"])
                     tv.invalidate()
                     return self._json(200, {"ok": True, "volume": level})
                 elif self.path == "/api/mute":
-                    upnp.set_mute(tv.ip, bool(body["on"]))
+                    tv.set_mute(bool(body["on"]))
                 elif self.path == "/api/media/url":
                     url = body["url"]
-                    upnp.play_url(tv.ip, url, body.get("mime") or mimetypes.guess_type(url)[0] or "audio/mpeg",
-                                  body.get("title") or "TV Tuner")
-                elif self.path == "/api/media/pause":
-                    upnp.pause(tv.ip)
-                elif self.path == "/api/media/play":
-                    upnp.resume(tv.ip)
-                elif self.path == "/api/media/stop":
-                    upnp.stop(tv.ip)
+                    tv.play_url(url, body.get("mime") or mimetypes.guess_type(url)[0] or "audio/mpeg",
+                                body.get("title") or "TV Tuner")
+                elif self.path in ("/api/media/pause", "/api/media/play", "/api/media/stop"):
+                    tv.media_cmd(self.path.rsplit("/", 1)[1])
                 else:
                     return self._json(404, {"error": "not found"})
                 tv.invalidate()

@@ -1,4 +1,4 @@
-"""Configuração local: IP, MAC e token da TV.
+"""Configuração local: marca, IP, MAC e token da TV.
 
 Fica em ~/.config/tv-tuner/config.json, fora do repositório — o token dá
 controle total da TV a quem tiver o arquivo.
@@ -36,7 +36,7 @@ def update(**fields):
 
 # Várias TVs: cada uma guarda o próprio token em "tvs"[ip]. O topo (ip, mac,
 # model, token) continua sendo a TV escolhida — a CLI inteira lê de lá.
-TV_FIELDS = ("name", "model", "mac", "token")
+TV_FIELDS = ("brand", "name", "model", "mac", "token")
 
 
 def tvs(cfg=None):
