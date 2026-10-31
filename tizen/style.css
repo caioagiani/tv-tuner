@@ -1,0 +1,75 @@
+/* Apple, leve. O chip da TV é fraco: navegar NÃO anima e NÃO repinta nada grande.
+ * O free-my-tv mediu uma Samsung 2021 (Tizen 6, 2 GB) travando até 360 ms por
+ * movimento com sombra/animação nas partes que mexem — era o nosso engasgo.
+ * - fundo e vidro são estáticos (pintados uma vez), e o vidro não recorta (sem overflow);
+ * - foco = um contorno que aparece; nada de escala, transição ou tom que muda;
+ * - a grade cabe inteira (3 fileiras), sem rolagem.
+ * Chromium 76 (Tizen 6): sem `gap` em flex, sem `inset`, sem backdrop-filter. */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 1920px; height: 1080px; overflow: hidden; background: #050507; color: #fff;
+  font-family: "SamsungOneUI", "SamsungOne", "Helvetica Neue", Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#bg {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  background:
+    radial-gradient(ellipse 60% 55% at 85% 0%, rgba(90, 110, 160, .22) 0%, rgba(0,0,0,0) 70%),
+    radial-gradient(ellipse 50% 50% at 0% 100%, rgba(80, 60, 120, .18) 0%, rgba(0,0,0,0) 70%),
+    #050507;
+}
+
+header { position: absolute; left: 132px; top: 84px; }
+#clock { font-size: 128px; font-weight: 200; letter-spacing: -3px; line-height: 1; }
+#date { margin-top: 10px; font-size: 32px; font-weight: 400; color: rgba(255,255,255,.62); }
+
+/* Vidro: translucidez feita de cor + borda clara (sem backdrop-filter, que a TV não aguenta). */
+#dock {
+  position: absolute; left: 96px; right: 96px; top: 330px; height: 700px;
+  border-radius: 44px; background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.10);
+}
+#grid { position: absolute; left: 36px; top: 36px; width: 1656px; }
+.row { height: 214px; white-space: nowrap; }
+
+.tile {
+  position: relative; display: inline-block; vertical-align: top;
+  width: 300px; height: 170px; margin-right: 39px;
+}
+.tile:last-child { margin-right: 0; }
+.art {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  border-radius: 20px; overflow: hidden; background: var(--bg, rgba(255,255,255,.08));
+}
+.art img {   /* ícone transparente: centralizado */
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: 68%; max-height: 68%;
+}
+.art img.cover {   /* ícone opaco (pôster): borda a borda */
+  left: 0; top: 0; transform: none; width: 100%; height: 100%;
+  max-width: none; max-height: none; object-fit: cover;
+}
+.art svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.word {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  text-align: center; font-size: 32px; font-weight: 600; letter-spacing: -.3px;
+}
+/* anel de foco: borda fixa, aparece sem animar */
+.ring {
+  position: absolute; left: -5px; top: -5px; right: -5px; bottom: -5px;
+  border-radius: 25px; border: 4px solid #fff; display: none;
+}
+.name {
+  position: absolute; left: -30px; right: -30px; top: 178px; text-align: center;
+  font-size: 24px; font-weight: 500; color: rgba(255,255,255,.9); display: none;
+}
+.tile.focus .ring, .tile.focus .name { display: block; }
+
+#tv-layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: none; z-index: 5; }
+#tv-layer.on { display: block; }
+#tv-hint {
+  position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%);
+  padding: 14px 30px; border-radius: 999px; background: rgba(30,30,30,.85); font-size: 26px;
+}
+#diag { position: absolute; left: 132px; bottom: 24px; font-size: 20px; color: #ff6b6b; z-index: 6; }
