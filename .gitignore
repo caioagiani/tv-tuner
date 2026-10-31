@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+tizen/*.wgt
+.venv/
+.DS_Store

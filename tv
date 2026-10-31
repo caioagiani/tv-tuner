@@ -1,0 +1,4 @@
+#!/bin/sh
+# Atalho: ./tv info  (ou: ln -s "$PWD/tv" /opt/homebrew/bin/tv)
+DIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+PYTHONPATH="$DIR" exec python3 -m tvtuner "$@"
