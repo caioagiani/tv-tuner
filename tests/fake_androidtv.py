@@ -3,6 +3,7 @@ com certificado do cliente, protobuf como o da TV. O código "mostrado na
 tela" fica em `tv.code`. Usa o mesmo protobuf/DER do driver."""
 import os
 import secrets
+import select
 import socket
 import ssl
 import subprocess
@@ -26,10 +27,12 @@ class AndroidTV:
         self.conns = []
 
     def push_volume(self):
+        # Mesma regra do driver: escrever de outra thread só sob a trava da conexão.
         for c in list(self.conns):
             try:
-                send_msg(c, pb((50, pb((6, 100), (7, self.volume), (8, self.muted)))))
-            except OSError:
+                with c.io:
+                    send_msg(c, pb((50, pb((6, 100), (7, self.volume), (8, self.muted)))))
+            except (OSError, ValueError):
                 self.conns.remove(c)
 
     def serve_pair(self, s):
@@ -64,10 +67,14 @@ class AndroidTV:
         recv_msg(s)
         send_msg(s, pb((40, pb((1, self.on)))))
         send_msg(s, pb((20, pb((1, pb((12, self.app)))))))
+        s.io = threading.Lock()
         self.conns.append(s)
         self.push_volume()
         while True:
-            m = recv_msg(s)
+            if not s.pending() and not select.select([s], [], [], 0.5)[0]:
+                continue
+            with s.io:
+                m = recv_msg(s)
             if 10 in m:
                 k = first(parse(m[10][0]), 1)
                 self.keys.append(k)
@@ -82,12 +89,14 @@ class AndroidTV:
                     self.volume += 1
                     self.push_volume()
                 if k in (223, 224):
-                    send_msg(s, pb((40, pb((1, self.on)))))
+                    with s.io:
+                        send_msg(s, pb((40, pb((1, self.on)))))
             elif 90 in m:
                 link = first(parse(m[90][0]), 1).decode()
                 self.links.append(link)
                 self.app = link.split("id=")[-1]
-                send_msg(s, pb((20, pb((1, pb((12, self.app)))))))
+                with s.io:
+                    send_msg(s, pb((20, pb((1, pb((12, self.app)))))))
             elif 21 in m:
                 e = parse(m[21][0])
                 info = parse(first(parse(first(e, 3)), 2))

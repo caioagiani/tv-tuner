@@ -4,6 +4,7 @@ Cada marca implementa o que o protocolo dela permite e declara em `caps`; o
 celular esconde o que a TV não tem. Teclas usam os nomes da Samsung (KEY_UP,
 KEY_ENTER...) como idioma comum — cada driver traduz para o seu.
 """
+import select
 import time
 
 HOME_APP = "TvTunerHom.TvTuner"     # botão "Início" do painel; quem não tem o app Tizen manda Home
@@ -14,6 +15,14 @@ HOME_APP = "TvTunerHom.TvTuner"     # botão "Início" do painel; quem não tem 
 # icons: a TV entrega os ícones dos apps · events: empurra volume/mudo (UPnP)
 ALL_CAPS = ("keys", "text", "apps", "launch", "volume", "mute", "media", "power", "pair",
             "ime", "cast", "browser", "icons", "events")
+
+
+def readable(sock, timeout=0.5):
+    """Há dado para ler? Com TLS, ler numa thread enquanto outra escreve no mesmo
+    socket corrompe a conexão (OpenSSL 3 no Linux: "record layer failure"); os
+    leitores esperam aqui e só leem, sob a trava de escrita, quando há o que ler."""
+    pending = getattr(sock, "pending", None)
+    return bool(pending and pending()) or bool(select.select([sock], [], [], timeout)[0])
 
 
 class Unsupported(RuntimeError):

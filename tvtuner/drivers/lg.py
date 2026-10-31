@@ -18,7 +18,7 @@ import websocket
 
 from .. import config, discover, wol
 from ..remote import PairingError
-from .base import HOME_APP, Driver, Unsupported
+from .base import HOME_APP, Driver, Unsupported, readable
 
 PORTS = ((3000, "ws"), (3001, "wss"))
 SSL = {"cert_reqs": ssl.CERT_NONE, "check_hostname": False}
@@ -180,7 +180,11 @@ class LG(Driver):
     def _reader(self, ws):
         while self.ws is ws:
             try:
-                msg = json.loads(ws.recv())
+                if not readable(ws.sock):
+                    continue
+                with self.send_lock:
+                    raw = ws.recv()
+                msg = json.loads(raw)
             except Exception:
                 if self.ws is ws:
                     self.ws = None

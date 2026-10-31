@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .. import catalog, config, discover, rest, upnp, wol
 from ..remote import Remote
-from .base import HOME_APP, Driver
+from .base import HOME_APP, Driver, readable
 
 
 class Samsung(Driver):
@@ -22,6 +22,7 @@ class Samsung(Driver):
     def __init__(self, ip, emit=None):
         super().__init__(ip, emit)
         self.lock = threading.Lock()
+        self.io_lock = threading.Lock()   # leitura e escrita no websocket, nunca ao mesmo tempo
         self.remote = None
         self.used = 0.0             # última vez que a TV respondeu (tecla ou pong)
         self.awake = False          # última leitura dizia "ligada"
@@ -77,7 +78,8 @@ class Samsung(Driver):
                     self._drop()
                     continue
                 try:
-                    r.ws.ping()
+                    with self.io_lock:
+                        r.ws.ping()
                 except Exception:
                     self._drop()
             finally:
@@ -89,7 +91,10 @@ class Samsung(Driver):
         import websocket as _ws
         while self.remote is r:
             try:
-                op, frame = r.ws.recv_data_frame(True)
+                if not readable(r.ws.sock):
+                    continue
+                with self.io_lock:
+                    op, frame = r.ws.recv_data_frame(True)
             except (_ws.WebSocketTimeoutException, TimeoutError):
                 continue
             except Exception:
@@ -136,7 +141,9 @@ class Samsung(Driver):
         with self.lock:
             for attempt in (1, 2):
                 try:
-                    out = fn(self._get())
+                    r = self._get()
+                    with self.io_lock:
+                        out = fn(r)
                     self.used = time.time()
                     return out
                 except Exception:

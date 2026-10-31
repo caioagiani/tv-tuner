@@ -19,7 +19,7 @@ import time
 
 from .. import config, discover, wol
 from ..remote import PairingError
-from .base import HOME_APP, Driver, Unsupported
+from .base import HOME_APP, Driver, Unsupported, readable
 
 API_PORT, PAIR_PORT = 6466, 6467
 CERT_DIR = os.path.join(config.DIR, "androidtv")
@@ -342,7 +342,6 @@ class AndroidTV(Driver):
             self._handle(s, m)
             if 40 in m:
                 break
-        s.settimeout(None)
         self.sock, self.seen = s, time.time()
         threading.Thread(target=self._reader, args=(s,), daemon=True).start()
         return s
@@ -379,7 +378,10 @@ class AndroidTV(Driver):
     def _reader(self, s):
         while self.sock is s:
             try:
-                m = recv_msg(s)
+                if not readable(s):
+                    continue
+                with self.send_lock:
+                    m = recv_msg(s)
             except Exception:
                 if self.sock is s:
                     self.sock = None
