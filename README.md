@@ -2,7 +2,7 @@
 
 <img src="docs/screens/remote.png" width="230" align="right" alt="Phone remote">
 
-Phone remote, voice control and an ad-free home screen for Samsung Tizen TVs.
+Phone remote, voice control and an ad-free home screen for Samsung Tizen and Roku TVs.
 Runs on your home network. No cloud, no store app, no ads.
 
 - **Remote:** D-pad with joystick drag, hold-to-repeat volume, app logos, live state.
@@ -44,16 +44,15 @@ pip3 install -r requirements.txt
 
 `./tv --help` lists the rest: keys, macros, apps, text, browser, power, checklist.
 
-## How it talks to the TV
+## Supported TVs
 
-| Port | Used for | Pairing |
-|---|---|---|
-| 8001 | info, open apps | no |
-| 8002 | keys, text, power off | yes |
-| 9197 | volume, mute, media (UPnP) + live events | no |
-| 26101 | install the Tizen app (SDB) | developer mode |
+| Brand | Status | Protocol | Notes |
+|---|---|---|---|
+| Samsung Tizen (2016+) | tested (UN50AU7700) | websocket 8002, REST 8001, UPnP 9197, SDB 26101 | pairing once; home screen app needs Developer Mode (2023+ needs a Samsung certificate) |
+| Roku TV / Roku players | experimental | ECP, HTTP 8060 | no pairing; set *Control by mobile apps* to Default; no absolute volume |
 
-Tested on a UN50AU7700 (2021, Tizen 6). Other Tizen Samsungs should work; 2023+ models need a Samsung certificate for the app.
+Each brand is a driver in `tvtuner/drivers/` declaring what it can do (`caps`); the phone hides the rest.
+New brand = one file. `python3 -m unittest discover -s tests -t .` runs against a fake Roku (`tests/fake_roku.py`).
 
 ## DNS
 

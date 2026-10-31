@@ -4,9 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .. import config, discover
 from .base import ALL_CAPS, HOME_APP, Driver, Unsupported
+from .roku import Roku
 from .samsung import Samsung
 
-DRIVERS = {d.brand: d for d in (Samsung,)}
+DRIVERS = {d.brand: d for d in (Samsung, Roku)}
 
 
 def probe(ip, brand=None, timeout=1.0):

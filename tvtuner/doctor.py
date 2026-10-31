@@ -241,7 +241,47 @@ def check_panel():
     return out
 
 
+MANUAL_ROKU = [
+    ("Controle pela rede", "Configurações > Sistema > Configurações avançadas do sistema > Controle por apps móveis > "
+                           "Acesso à rede: Padrão (Limitado recusa teclas e apps)"),
+    ("Ligar pela rede", "Configurações > Sistema > Energia > Início rápido da TV: ligado (sem isso a TV dorme fora da rede e só o Wake-on-LAN acorda)"),
+    ("Anúncios e rastreio", "Configurações > Privacidade > Publicidade > Limitar rastreamento de anúncios: ligado"),
+    ("Reconhecimento de conteúdo", "Configurações > Privacidade > Experiência da Smart TV > Usar informações das "
+                                   "entradas da TV: desligado"),
+    ("Atualização", "Configurações > Sistema > Atualização do sistema: a Roku atualiza sozinha; confira a versão"),
+]
+
+
+def check_generic(ip):
+    from . import drivers
+    drv = drivers.get(ip)
+    try:
+        d = drv.info(timeout=3)
+    except Exception:
+        d = None
+    if not d:
+        return [_f(FAIL, "TV", f"Não responde em {ip}.", "Ligue a TV e confira se está na mesma rede. "
+                   "Se o IP mudou: tv discover.")], None
+    out = [_f(OK, "TV", f"{d['model']} · {d['os']} · {'ligada' if d['power'] == 'on' else 'em espera'}")]
+    try:
+        drv.current_app(drv.apps)
+        out.append(_f(OK, "Controle", "a TV aceita comandos pela rede"))
+    except Exception as e:
+        out.append(_f(FAIL, "Controle", str(e)))
+    return out, d
+
+
 def run(ip):
+    from . import drivers
+    if drivers.brand_of(ip) != "samsung":
+        out, d = check_generic(ip)
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            for part in ex.map(lambda f: f(), [lambda: check_network(ip, None), check_panel]):
+                out += part
+        order = {FAIL: 0, WARN: 1, INFO: 2, OK: 3}
+        out.sort(key=lambda f: order[f["status"]])
+        return {"tv": ip, "at": time.strftime("%d/%m/%Y %H:%M"), "findings": out,
+                "manual": [{"title": t, "detail": dd} for t, dd in MANUAL_ROKU]}
     out, dev = check_tv(ip)
     with ThreadPoolExecutor(max_workers=6) as ex:
         jobs = [ex.submit(f, *a) for f, a in [
@@ -261,7 +301,7 @@ def run(ip):
 
 
 def fix(ip, report):
-    """Só o que é seguro fazer sem perguntar: recompilar e reinstalar o app desatualizado."""
+    """Só o que é seguro fazer sem perguntar: recompilar e reinstalar o app desatualizado (Samsung)."""
     import sys
     done = []
     for f in report["findings"]:

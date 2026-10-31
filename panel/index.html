@@ -74,6 +74,8 @@
   .tile .logo { position: absolute; left: 50%; top: 42%; width: 38%; height: 38%; transform: translate(-50%, -50%);
                 background: #fff; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
   .tile .logo.wide { width: 62%; height: 44%; }
+  .tile .appimg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+  .tile.has-img > span:last-child { visibility: hidden; }
   .tile .word { position: absolute; left: 0; right: 0; top: 42%; transform: translateY(-50%); text-align: center;
                 font-size: 19px; font-weight: 800; letter-spacing: -.4px; }
   .tile.has-logo, .tile.has-word { justify-content: center; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.85); }
@@ -488,13 +490,16 @@ async function apps() {
     if (!list.length) throw new Error("vazia");
     apps.loaded = true;
     box.innerHTML = "";
-    const add = (name, id, bg) => {
+    const add = (name, id, bg, icon) => {
       const b = document.createElement("button");
       b.className = "tile fb"; b.dataset.launch = id; b.dataset.name = name; b.dataset.app = id;
       b.innerHTML = '<span class="badge">Aberto</span>';
       const slug = ICON[name] || ICON[name + " - Music and Podcasts"];
       const url = id === "TvTunerHom.TvTuner" ? TV_GLYPH : slug && "url(/icons/" + slug + ".svg)";
-      if (url) {
+      if (!url && icon) {
+        const im = document.createElement("img"); im.className = "appimg"; im.src = icon; im.alt = "";
+        b.append(im); b.classList.add("has-img");
+      } else if (url) {
         const l = document.createElement("i"); l.className = "logo" + (slug === "primevideo" ? " wide" : ""); l.style.setProperty("--icon", url);
         b.append(l); b.classList.add("has-logo");
       } else {
@@ -506,8 +511,8 @@ async function apps() {
       b.append(label); b.style.background = bg;
       box.append(b);
     };
-    add("TV Tuner", "TvTunerHom.TvTuner", "linear-gradient(135deg,#2c2c2e,#48484a)");
-    list.forEach(a => add(a.name.replace(" - Music and Podcasts", ""), a.appId, BRAND[a.name] || "#2c2c2e"));
+    if (S.brand !== "roku") add("TV Tuner", "TvTunerHom.TvTuner", "linear-gradient(135deg,#2c2c2e,#48484a)");
+    list.forEach(a => add(a.name.replace(" - Music and Podcasts", ""), a.appId, BRAND[a.name] || "#2c2c2e", a.icon));
     paint();
   } catch (e) {
     box.innerHTML = '<p class="note">A TV não respondeu.</p><button class="scan fb" id="appsretry">Tentar de novo</button>';
@@ -555,8 +560,12 @@ document.addEventListener("keydown", e => {
 });
 
 // Estado vivo: lê a cada 3 s, e logo depois de cada comando.
+// O que a TV suporta (o painel manda em S.caps); painel antigo sem caps = tudo.
+const has = c => !S.caps || S.caps.includes(c);
+const BRANDS = { samsung: "Samsung", roku: "Roku" };
 function paint() {
   const p = S.power || "off";
+  document.querySelector('[data-view="audio"]').style.display = has("cast") ? "" : "none";
   $("#dot").className = "dot " + p;
   $("#name").textContent = S.name ? S.name.replace("Samsung ", "") : "TV";
   const parts = [p === "on" ? "Ligada" : p === "standby" ? "Em espera" : "Desligada"];
@@ -749,14 +758,14 @@ async function loadTvs() {
 }
 function drawTvs(list) {
   const box = $("#tvlist"); box.innerHTML = "";
-  if (!list.length) box.innerHTML = '<p class="note">Nenhuma TV Samsung respondeu. Ela está ligada e no mesmo Wi-Fi?</p>';
+  if (!list.length) box.innerHTML = '<p class="note">Nenhuma TV respondeu (Samsung ou Roku). Ela está ligada e no mesmo Wi-Fi?</p>';
   list.forEach(t => {
     const row = document.createElement("div");
     row.className = "tvrow" + (t.current ? " cur" : "");
     const p = t.online ? (t.power || "on") : "off";
     row.innerHTML = '<div class="t"><i class="dot ' + p + '"></i><span></span></div><div class="s"></div><div class="b"></div>';
-    row.querySelector(".t span").textContent = (t.name || "TV Samsung").replace("Samsung ", "") + (t.current ? " · em uso" : "");
-    row.querySelector(".s").textContent = [t.model, t.ip, PWR[p], t.paired ? "pareada" : "sem pareamento"].filter(Boolean).join(" · ");
+    row.querySelector(".t span").textContent = (t.name || "TV").replace("Samsung ", "") + (t.current ? " · em uso" : "");
+    row.querySelector(".s").textContent = [BRANDS[t.brand], t.model, t.ip, PWR[p], t.brand === "roku" ? null : t.paired ? "pareada" : "sem pareamento"].filter(Boolean).join(" · ");
     const b = row.querySelector(".b");
     const btn = (label, cls, fn) => { const x = document.createElement("button"); x.className = "fb " + cls; x.textContent = label; x.onclick = () => fn(x); b.append(x); };
     if (!t.current) btn("Usar", "pri", x => act(x, api("/api/tvs/select", { ip: t.ip }), "Controlando " + (t.name || t.ip))
@@ -818,7 +827,7 @@ async function paintSettings() {
     paintSettings.remote = r.tailscale && r.tailscale.replace(/:\d+$/, ":8743");
     $("#st-remote-s").textContent = paintSettings.remote ? paintSettings.remote + " · toque para copiar" : "Tailscale desligado — só na rede de casa";
   }).catch(() => {});
-  $("#st-tv-s").textContent = [S.name ? S.name.replace("Samsung ", "") : "—", S.ip, S.paired ? "pareada" : "sem pareamento"].filter(Boolean).join(" · ");
+  $("#st-tv-s").textContent = [S.name ? S.name.replace("Samsung ", "") : "—", S.ip, has("pair") ? (S.paired ? "pareada" : "sem pareamento") : BRANDS[S.brand]].filter(Boolean).join(" · ");
   $("#st-voice-sw").classList.toggle("on", voiceOnMac() || !SR);
   try {
     const r = paintSettings.doc || (paintSettings.doc = await api("/api/doctor"));
@@ -1031,6 +1040,12 @@ async function runVoice(text) {
       await api("/api/launch", { appId: app.appId }); say("Abrindo " + app.name.replace(" - Music and Podcasts", ""));
     } else if (t.split(" ").length <= 3 && (app = findApp(list, t))) {          // só o nome do app
       await api("/api/launch", { appId: app.appId }); say("Abrindo " + app.name.replace(" - Music and Podcasts", ""));
+    } else if (!has("volume") && /volume|som|alto|baixo/.test(t) && /^(aumenta|aumentar|sobe|subir|mais alto|abaixa|abaixar|diminui|diminuir|desce|baixa|mais baixo)/.test(t)) {
+      const k = /^(aumenta|aumentar|sobe|subir|mais alto)/.test(t) ? "KEY_VOLUP" : "KEY_VOLDOWN";
+      for (let i = 0; i < 5; i++) await api("/api/key", { key: k });
+      say(k === "KEY_VOLUP" ? "Aumentando" : "Abaixando");
+    } else if (!has("volume") && /^volume\s/.test(t)) {
+      say("Esta TV não informa o volume: diga aumenta ou abaixa");
     } else if ((m = t.match(/volume\s+(?:no |em |para |pra |a )?(.+)$/)) && num(m[1]) !== null) {
       S.volume = Math.min(100, num(m[1])); paint(); await api("/api/volume", { level: S.volume }); say("Volume " + S.volume);
     } else if (/^(aumenta|aumentar|sobe|subir|mais alto)/.test(t) && (/volume|som|alto/.test(t))) {
