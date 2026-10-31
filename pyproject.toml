@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Self-hosted phone remote for smart TVs: Samsung Tizen, LG webOS, Roku and Android TV"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["websocket-client>=1.6"]
 keywords = ["smart-tv", "remote-control", "samsung", "tizen", "webos", "roku", "android-tv", "whisper"]
 classifiers = [
