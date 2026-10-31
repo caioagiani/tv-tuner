@@ -262,7 +262,14 @@ MANUAL_LG = [
                             "anúncios por interesse e recomendações"),
     ("Modo de imagem", "Configurações > Imagem > Modo de imagem: Cinema ou Filmmaker (o Vívido exagera cor e brilho)"),
 ]
-MANUAL_BY_BRAND = {"lg": MANUAL_LG, "roku": MANUAL_ROKU}
+MANUAL_ANDROIDTV = [
+    ("Controle pela rede", "Vem ligado (Android TV Remote Service). Se o pareamento falhar sempre: Configurações > Apps > "
+                           "Apps do sistema > Android TV Remote Service > Limpar dados"),
+    ("Ligar pela rede", "Configurações > Sistema > Energia: ligar \"Wake on LAN\" / \"Ligar pela rede\" (nome varia por fabricante)"),
+    ("Anúncios", "Configurações > Privacidade > Anúncios: excluir o ID de publicidade e desligar a personalização"),
+    ("Tela inicial", "Configurações > Apps > Google TV: modo só apps reduz as recomendações patrocinadas"),
+]
+MANUAL_BY_BRAND = {"lg": MANUAL_LG, "roku": MANUAL_ROKU, "androidtv": MANUAL_ANDROIDTV}
 
 
 def check_generic(ip):

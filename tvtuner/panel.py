@@ -296,6 +296,7 @@ class Hub:
         self.callback = None        # URL que a TV chama com os eventos UPnP (definida no serve)
         self.gena = {}              # serviço -> (sid, expira_em)
         self.last_pushed = None
+        self.pairing = {}           # ip -> driver no meio de um pareamento com código
         threading.Thread(target=self._watch, daemon=True).start()
 
     def current(self):
@@ -429,10 +430,20 @@ class Hub:
         config.select(ip)
         self.ip = ip
 
-    def pair(self, ip):
+    def pair(self, ip, code=None):
+        """Samsung/LG: bloqueia até "Permitir" na TV. Android TV: 1ª chamada faz a
+        TV mostrar um código (devolve {"code": True}); a 2ª traz o código digitado."""
         self._learn(ip)
         t = self.tvs.get(ip)
-        (t.drv if t else drivers.get(ip)).pair()
+        drv = t.drv if t else self.pairing.setdefault(ip, drivers.get(ip))
+        if getattr(drv, "pair_with_code", False):
+            if code is None:
+                drv.pair_start()
+                return {"code": True}
+            drv.pair_finish(code)
+        else:
+            drv.pair()
+        self.pairing.pop(ip, None)
         if t:
             t.invalidate()
 
@@ -682,7 +693,9 @@ def make_handler(tv, pin, port):
                 elif self.path == "/api/tvs/select":
                     tv.select(body["ip"])
                 elif self.path == "/api/tvs/pair":
-                    tv.pair(body["ip"])
+                    out = tv.pair(body["ip"], body.get("code"))
+                    if out:
+                        return self._json(200, out)
                 elif self.path == "/api/doctor/fix":
                     from . import doctor
                     return self._json(200, {"done": doctor.fix(tv.ip, doctor.run(tv.ip))})

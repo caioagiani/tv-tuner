@@ -2,7 +2,7 @@
 
 <img src="docs/screens/remote.png" width="230" align="right" alt="Phone remote">
 
-Phone remote, voice control and an ad-free home screen for Samsung Tizen, LG webOS and Roku TVs.
+Phone remote, voice control and an ad-free home screen for Samsung Tizen, LG webOS, Roku and Android TV / Google TV.
 Runs on your home network. No cloud, no store app, no ads.
 
 - **Remote:** D-pad with joystick drag, hold-to-repeat volume, app logos, live state.
@@ -50,10 +50,11 @@ pip3 install -r requirements.txt
 |---|---|---|---|
 | Samsung Tizen (2016+) | tested (UN50AU7700) | websocket 8002, REST 8001, UPnP 9197, SDB 26101 | pairing once; home screen app needs Developer Mode (2023+ needs a Samsung certificate) |
 | LG webOS (2014+) | experimental | SSAP websocket 3000/3001 | pairing once; power on needs *Mobile TV On* / Wake-on-LAN |
+| Android TV / Google TV (Sony, TCL, Philips, Chromecast, Shield...) | experimental | Android TV Remote v2, TLS 6466/6467 | pairing with a 6-character code shown on the TV; apps open by package; volume reported, not set |
 | Roku TV / Roku players | experimental | ECP, HTTP 8060 | no pairing; set *Control by mobile apps* to Default; no absolute volume |
 
 Each brand is a driver in `tvtuner/drivers/` declaring what it can do (`caps`); the phone hides the rest.
-New brand = one file. `python3 -m unittest discover -s tests -t .` runs against fake TVs (`tests/fake_roku.py`, `tests/fake_lg.py`).
+New brand = one file. `python3 -m unittest discover -s tests -t .` runs against fake TVs (`tests/fake_*.py`).
 
 ## DNS
 
@@ -64,6 +65,7 @@ New brand = one file. `python3 -m unittest discover -s tests -t .` runs against 
 SDB installer based on [free-my-tv](https://github.com/simbasjungles/free-my-tv) (MIT).
 Tizen notes from [cleanyourtv](https://github.com/Gathin23/cleanyourtv).
 Aggressive list from [Perflyst/PiHoleBlocklist](https://github.com/Perflyst/PiHoleBlocklist).
+Android TV protocol checked against [androidtvremote2](https://github.com/tronikos/androidtvremote2) (Apache-2.0).
 LG protocol checked against [aiowebostv](https://github.com/home-assistant-libs/aiowebostv) (Apache-2.0).
 Icons from [Simple Icons](https://simpleicons.org).
 

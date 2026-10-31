@@ -1,9 +1,9 @@
-"""tv — controle e otimização de TV pela rede (Samsung Tizen, LG webOS e Roku).
+"""tv — controle e otimização de TV pela rede (Samsung Tizen, LG webOS, Roku e Android TV).
 
     tv discover                 acha TVs na rede (salva se houver uma só)
     tv use 192.168.1.50          escolhe a TV
     tv info                     modelo, energia, modo dev, portas
-    tv pair                     pede "Permitir" na TV e guarda a chave (Samsung, LG)
+    tv pair                     pede "Permitir" na TV e guarda a chave (Samsung, LG, Android TV)
     tv key HOME VOLUP ...       envia teclas
     tv macro <nome>             roda uma sequência (tv macro sem nome lista)
     tv apps                     lista apps instalados
@@ -50,7 +50,7 @@ def _save_tv(ip, d):
 def cmd_discover(args):
     found = drivers.scan(args.cidr)
     if not found:
-        sys.exit("Nenhuma TV respondeu (Samsung na 8001, LG na 3000/3001, Roku na 8060). Ela está ligada e na mesma rede?")
+        sys.exit("Nenhuma TV respondeu (Samsung na 8001, LG na 3000/3001, Roku na 8060, Android TV na 6467). Ela está ligada e na mesma rede?")
     for ip, d in found:
         print(f"{ip:16} {d['brand']:8} {d['model'] or '?':22} {d['name'] or ''}  [{d['power']}]")
     if len(found) == 1 and not config.load().get("ip"):
@@ -92,7 +92,8 @@ def cmd_pair(args):
     if "pair" not in drv.caps:
         print(f"{drv.label} não precisa de pareamento.")
         return
-    print("Olhe a TV e escolha Permitir...")
+    print("Olhe a TV: ela vai mostrar um código." if getattr(drv, "pair_with_code", False)
+          else "Olhe a TV e escolha Permitir...")
     try:
         drv.pair(timeout=60)
         print("Pareado. Token salvo em", config.PATH)

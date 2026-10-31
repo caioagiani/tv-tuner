@@ -562,12 +562,12 @@ document.addEventListener("keydown", e => {
 // Estado vivo: lê a cada 3 s, e logo depois de cada comando.
 // O que a TV suporta (o painel manda em S.caps); painel antigo sem caps = tudo.
 const has = c => !S.caps || S.caps.includes(c);
-const BRANDS = { samsung: "Samsung", lg: "LG", roku: "Roku" };
+const BRANDS = { samsung: "Samsung", lg: "LG", roku: "Roku", androidtv: "Android TV" };
 function paint() {
   const p = S.power || "off";
   document.querySelector('[data-view="audio"]').style.display = has("cast") ? "" : "none";
   // Samsung sem pareamento ainda abre app e mexe no volume; a LG não faz nada.
-  $("#pairtxt").textContent = S.brand === "lg" ? "Sem pareamento: a LG só aceita comandos depois de parear."
+  $("#pairtxt").textContent = S.brand === "lg" || S.brand === "androidtv" ? "Sem pareamento: esta TV só aceita comandos depois de parear."
     : "Sem pareamento: apps e volume funcionam; setas e texto não.";
   $("#dot").className = "dot " + p;
   $("#name").textContent = S.name ? S.name.replace("Samsung ", "") : "TV";
@@ -761,7 +761,7 @@ async function loadTvs() {
 }
 function drawTvs(list) {
   const box = $("#tvlist"); box.innerHTML = "";
-  if (!list.length) box.innerHTML = '<p class="note">Nenhuma TV respondeu (Samsung, LG ou Roku). Ela está ligada e no mesmo Wi-Fi?</p>';
+  if (!list.length) box.innerHTML = '<p class="note">Nenhuma TV respondeu (Samsung, LG, Roku ou Android TV). Ela está ligada e no mesmo Wi-Fi?</p>';
   list.forEach(t => {
     const row = document.createElement("div");
     row.className = "tvrow" + (t.current ? " cur" : "");
@@ -774,8 +774,14 @@ function drawTvs(list) {
     if (!t.current) btn("Usar", "pri", x => act(x, api("/api/tvs/select", { ip: t.ip }), "Controlando " + (t.name || t.ip))
                                          .then(() => { tvSheet(false); apps.loaded = false; apps.list = null; refresh(); }));
     if (!t.paired && t.online && p === "on") btn("Parear", t.current ? "pri" : "", x => {
-      x.textContent = "Aceite na TV…"; toast("Na TV, escolha Permitir");
-      act(x, api("/api/tvs/pair", { ip: t.ip }), "Pareada").then(loadTvs);
+      x.textContent = "Aceite na TV…"; toast(t.brand === "androidtv" ? "A TV vai mostrar um código" : "Na TV, escolha Permitir");
+      // Android TV não pergunta "Permitir": mostra um código que se digita aqui.
+      act(x, api("/api/tvs/pair", { ip: t.ip }).then(r => {
+        if (!r || !r.code) return r;
+        const c = prompt("Digite o código de 6 caracteres que apareceu na TV:");
+        if (!c) throw new Error("Pareamento cancelado");
+        return api("/api/tvs/pair", { ip: t.ip, code: c.trim() });
+      }), "Pareada").then(loadTvs);
     });
     if (t.saved) btn("Esquecer", "del", x => { if (confirm("Esquecer esta TV? O pareamento some.")) act(x, api("/api/tvs/forget", { ip: t.ip })).then(loadTvs); });
     box.append(row);
