@@ -7,7 +7,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-os.environ.setdefault("TVTUNER_CONFIG", os.path.join(tempfile.mkdtemp(), "config.json"))
+os.environ["TVTUNER_CONFIG"] = os.path.join(tempfile.mkdtemp(), "config.json")
 
 from tests import fake_lg                       # noqa: E402
 from tvtuner import config, drivers, panel      # noqa: E402

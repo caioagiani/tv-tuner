@@ -5,33 +5,43 @@ controle total da TV a quem tiver o arquivo.
 """
 import json
 import os
+import tempfile
+import threading
 
 PATH = os.path.expanduser(os.environ.get("TVTUNER_CONFIG", "~/.config/tv-tuner/config.json"))
 DIR = os.path.dirname(PATH)
 
 
+# O painel grava de várias threads (pareamento, MAC aprendido, marca): ler-mudar-gravar
+# sem trava perdia campos, e o .tmp de nome fixo chegou a deixar o JSON pela metade.
+LOCK = threading.RLock()
+
+
 def load():
-    try:
-        with open(PATH, encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
+    with LOCK:
+        try:
+            with open(PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
 
 
 def save(cfg):
-    os.makedirs(os.path.dirname(PATH), exist_ok=True)
-    tmp = PATH + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, PATH)
+    with LOCK:
+        os.makedirs(os.path.dirname(PATH), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(PATH), prefix=".config-")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, PATH)
 
 
 def update(**fields):
-    cfg = load()
-    cfg.update({k: v for k, v in fields.items() if v is not None})
-    save(cfg)
-    return cfg
+    with LOCK:
+        cfg = load()
+        cfg.update({k: v for k, v in fields.items() if v is not None})
+        save(cfg)
+        return cfg
 
 
 # Várias TVs: cada uma guarda o próprio token em "tvs"[ip]. O topo (ip, mac,
@@ -56,36 +66,39 @@ def tv(ip):
 
 def remember(ip, **fields):
     """Atualiza uma TV salva (e o topo, se for a escolhida)."""
-    cfg = load()
-    all_ = tvs(cfg)
-    entry = all_.setdefault(ip, {})
-    entry.update({k: v for k, v in fields.items() if v is not None})
-    cfg["tvs"] = all_
-    if cfg.get("ip") == ip:
-        cfg.update({k: v for k, v in fields.items() if k in TV_FIELDS and v is not None})
-    save(cfg)
-    return entry
+    with LOCK:
+        cfg = load()
+        all_ = tvs(cfg)
+        entry = all_.setdefault(ip, {})
+        entry.update({k: v for k, v in fields.items() if v is not None})
+        cfg["tvs"] = all_
+        if cfg.get("ip") == ip:
+            cfg.update({k: v for k, v in fields.items() if k in TV_FIELDS and v is not None})
+        save(cfg)
+        return entry
 
 
 def forget(ip):
-    cfg = load()
-    all_ = tvs(cfg)
-    all_.pop(ip, None)
-    cfg["tvs"] = all_
-    if cfg.get("ip") == ip:
-        for k in ("ip",) + TV_FIELDS:
-            cfg.pop(k, None)
-    save(cfg)
+    with LOCK:
+        cfg = load()
+        all_ = tvs(cfg)
+        all_.pop(ip, None)
+        cfg["tvs"] = all_
+        if cfg.get("ip") == ip:
+            for k in ("ip",) + TV_FIELDS:
+                cfg.pop(k, None)
+        save(cfg)
 
 
 def select(ip):
-    cfg = load()
-    all_ = tvs(cfg)
-    entry = all_.setdefault(ip, {})
-    cfg["tvs"] = all_
-    for k in TV_FIELDS:
-        cfg.pop(k, None)
-    cfg["ip"] = ip
-    cfg.update({k: entry[k] for k in TV_FIELDS if entry.get(k)})
-    save(cfg)
-    return entry
+    with LOCK:
+        cfg = load()
+        all_ = tvs(cfg)
+        entry = all_.setdefault(ip, {})
+        cfg["tvs"] = all_
+        for k in TV_FIELDS:
+            cfg.pop(k, None)
+        cfg["ip"] = ip
+        cfg.update({k: entry[k] for k in TV_FIELDS if entry.get(k)})
+        save(cfg)
+        return entry
