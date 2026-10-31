@@ -1,0 +1,6 @@
+.git
+**/__pycache__
+tizen
+docs
+tests
+data

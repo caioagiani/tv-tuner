@@ -19,30 +19,33 @@ Runs on your home network. No cloud, no store app, no ads.
 Paste this into Claude Code (or any agent with a terminal) inside this folder:
 
 ```text
-Set up TV Tuner on this computer for my Samsung TV.
+Set up TV Tuner on this computer (macOS, Linux or Raspberry Pi) for the TVs on my network.
 
-1. Install dependencies: pip3 install -r requirements.txt; whisper.cpp and ffmpeg (brew).
-2. Run ./tv discover and ./tv pair. I'll accept "Allow" on the TV.
-3. Run ./tv doctor, explain each warning and fix what can be fixed automatically.
-4. Run the panel as a service: ./tv service install --pin <pick a 4-digit PIN>.
+1. Install: pip install . (or Docker: docker compose up -d, after setting PIN in docker-compose.yml).
+   For voice: whisper.cpp and ffmpeg (brew or apt).
+2. Run tv discover and tv pair. I'll accept "Allow" on the TV, or type the code it shows (Android TV).
+3. Run tv doctor, explain each warning and fix what can be fixed automatically.
+4. Keep the panel running: tv service install --pin <pick a 4-digit PIN> (launchd or systemd).
    Download the whisper large-v3-turbo q5_0 model into ~/.config/tv-tuner/whisper/.
 5. Give me the panel's https URL to open on my phone, on the same network.
-6. Optional: install the home screen (tizen/README.md) and walk me through the TV's Developer Mode.
+6. Samsung only, optional: install the home screen (tizen/README.md) and walk me through Developer Mode.
 
-Rules: never open router ports; token, PIN and the TV's label never go into git.
+Rules: never open router ports; tokens, PIN and the TV's label never go into git.
 ```
 
 ## Manual
 
 ```sh
-pip3 install -r requirements.txt
-./tv discover && ./tv pair
-./tv doctor
-./tv panel --pin 1234        # http://<ip>:8780 · https://<ip>:8743 (mic needs https)
-./tv service install --pin 1234
+pip install .                # or, from the repo without installing: ./tv ...
+tv discover && tv pair
+tv doctor
+tv panel --pin 1234          # http://<ip>:8780 · https://<ip>:8743 (mic needs https)
+tv service install --pin 1234
 ```
 
-`./tv --help` lists the rest: keys, macros, apps, text, browser, power, checklist.
+Docker (Linux host; needs `network_mode: host` to see the TV): edit the PIN in `docker-compose.yml`, then `docker compose up -d`. The first start picks the first TV it finds; switch TVs from the phone.
+
+`tv --help` lists the rest: keys, macros, apps, text, browser, power, checklist.
 
 ## Supported TVs
 

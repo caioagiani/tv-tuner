@@ -22,7 +22,7 @@ from urllib.parse import quote, unquote
 
 from . import config, discover, drivers, macros
 
-STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "panel")
+STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 MEDIA_DIR = os.path.join(tempfile.gettempdir(), "tvtuner-media")
 TLS_DIR = os.path.join(config.DIR, "tls")
 APP_ICONS = {}                  # (ip, appId) -> (bytes, content-type)
@@ -33,12 +33,14 @@ def addresses():
     """Endereços pelos quais o painel é aberto: IPv4 da rede local e da Tailscale
     (100.64/10), mais o nome MagicDNS. Todos entram no certificado — o navegador
     recusa HTTPS por um endereço que não esteja nele."""
-    ips, names = set(), {"localhost"}
-    try:
-        out = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=5).stdout
+    ips, names = {discover.local_ip()}, {"localhost"}
+    # macOS tem ifconfig; Linux enxuto (Docker, Raspberry) às vezes só tem o ip.
+    for cmd in (["ifconfig"], ["ip", "-4", "-o", "addr"]):
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            continue
         ips |= {ip for ip in re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", out) if not ip.startswith("127.")}
-    except Exception:
-        pass
     ts = tailscale()
     if ts:
         ips |= set(ts["ips"])

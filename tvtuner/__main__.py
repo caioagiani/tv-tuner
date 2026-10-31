@@ -13,7 +13,7 @@
     tv on | tv off              liga (Wake-on-LAN) / desliga
     tv doctor [--fix]           diagnóstico: o que está certo, o que ajustar
     tv panel [--pin 1234]       painel web para controlar pelo celular
-    tv service install --pin 1234   painel sempre no ar (sobe com o login do Mac)
+    tv service install --pin 1234   painel sempre no ar (launchd no macOS, systemd no Linux)
     tv checklist                passo a passo das configurações de privacidade/imagem
     tv app build|install|uninstall   a tela inicial própria (pasta tizen/)
 """
@@ -21,13 +21,14 @@ import argparse
 import json
 import os
 import plistlib
+import shutil
 import subprocess
 import sys
 
 from . import config, discover, drivers, macros
 from .remote import PairingError, open_remote
 
-ROOT = __file__.rsplit("/tvtuner/", 1)[0]
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _tv_ip(args):
@@ -157,7 +158,15 @@ def cmd_off(args):
 
 def cmd_panel(args):
     from . import panel
-    panel.serve(_tv_ip(args), args.host, args.port, args.pin, args.tls_port)
+    ip = args.ip or config.load().get("ip")
+    if not ip:
+        # Primeira vez (Docker, Raspberry): procura e fica com a primeira TV; troca depois no celular.
+        found = drivers.scan()
+        if not found:
+            sys.exit("Nenhuma TV na rede. Ligue a TV e rode de novo, ou: tv --ip <ip-da-tv> panel")
+        _save_tv(*found[0])
+        ip = found[0][0]
+    panel.serve(ip, args.host, args.port, args.pin, args.tls_port)
 
 
 CHECKLIST = [
@@ -209,16 +218,47 @@ def cmd_checklist(args):
 
 PLIST = os.path.expanduser("~/Library/LaunchAgents/com.tvtuner.panel.plist")
 LABEL = "com.tvtuner.panel"
+UNIT = os.path.expanduser("~/.config/systemd/user/tvtuner-panel.service")
+
+
+def _panel_argv(args):
+    return [sys.executable, "-m", "tvtuner", "panel", "--port", str(args.port)] + (["--pin", args.pin] if args.pin else [])
 
 
 def cmd_service(args):
-    """Painel sempre no ar: launchd sobe no login e reergue se cair."""
+    """Painel sempre no ar: sobe com o login e reergue se cair (launchd no macOS, systemd no Linux)."""
+    if sys.platform == "darwin":
+        return _service_launchd(args)
+    if not shutil.which("systemctl"):
+        sys.exit("Sem launchd nem systemd: rode 'tv panel' pelo gerenciador de serviços do sistema (ou use o Docker).")
+    sc = ["systemctl", "--user"]
+    if args.action == "install":
+        os.makedirs(os.path.dirname(UNIT), exist_ok=True)
+        with open(UNIT, "w", encoding="utf-8") as f:
+            f.write("[Unit]\nDescription=TV Tuner panel\nAfter=network-online.target\n\n[Service]\n"
+                    f"Environment=PYTHONPATH={ROOT}\nWorkingDirectory={ROOT}\n"
+                    f"ExecStart={' '.join(_panel_argv(args))}\nRestart=always\nRestartSec=3\n\n"
+                    "[Install]\nWantedBy=default.target\n")
+        subprocess.check_call(sc + ["daemon-reload"])
+        subprocess.check_call(sc + ["enable", "--now", "tvtuner-panel"])
+        print(f"Painel no ar e iniciando com o login: http://{discover.local_ip()}:{args.port}  (log: journalctl --user -u tvtuner-panel)")
+        print("Para subir sem login (Raspberry sem tela): sudo loginctl enable-linger $USER")
+    elif args.action == "uninstall":
+        subprocess.call(sc + ["disable", "--now", "tvtuner-panel"])
+        if os.path.exists(UNIT):
+            os.remove(UNIT)
+        print("Painel removido do login.")
+    else:
+        rc = subprocess.call(sc + ["is-active", "--quiet", "tvtuner-panel"])
+        print("rodando" if rc == 0 else "parado")
+
+
+def _service_launchd(args):
     uid = os.getuid()
     if args.action == "install":
         log = os.path.expanduser("~/Library/Logs/tvtuner-panel.log")
-        argv = [sys.executable, "-m", "tvtuner", "panel", "--port", str(args.port)] + (["--pin", args.pin] if args.pin else [])
         plist = {
-            "Label": LABEL, "ProgramArguments": argv, "WorkingDirectory": ROOT,
+            "Label": LABEL, "ProgramArguments": _panel_argv(args), "WorkingDirectory": ROOT,
             "EnvironmentVariables": {"PYTHONPATH": ROOT}, "RunAtLoad": True, "KeepAlive": True,
             "StandardOutPath": log, "StandardErrorPath": log,
         }

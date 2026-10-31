@@ -1,0 +1,9 @@
+services:
+  tv-tuner:
+    build: .
+    network_mode: host          # mesma rede da TV: busca, UPnP e Wake-on-LAN
+    restart: unless-stopped
+    environment:
+      PIN: "1234"               # troque
+    volumes:
+      - ./data:/data            # TVs pareadas, certificados

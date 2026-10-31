@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tv-tuner"
+version = "0.2.0"
+description = "Self-hosted phone remote for smart TVs: Samsung Tizen, LG webOS, Roku and Android TV"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = ["websocket-client>=1.6"]
+keywords = ["smart-tv", "remote-control", "samsung", "tizen", "webos", "roku", "android-tv", "whisper"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Home Automation",
+]
+
+[project.urls]
+Homepage = "https://github.com/caioagiani/tv-tuner"
+
+[project.scripts]
+tv = "tvtuner.__main__:main"
+
+[tool.setuptools]
+packages = ["tvtuner", "tvtuner.drivers"]
+
+[tool.setuptools.package-data]
+tvtuner = ["web/*.html"]

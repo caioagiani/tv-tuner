@@ -3,3 +3,6 @@ __pycache__/
 tizen/*.wgt
 .venv/
 .DS_Store
+data/
+*.egg-info/
+build/
