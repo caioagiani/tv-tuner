@@ -1,5 +1,7 @@
 # TV Tuner
 
+[![tests](https://github.com/caioagiani/tv-tuner/actions/workflows/tests.yml/badge.svg)](https://github.com/caioagiani/tv-tuner/actions/workflows/tests.yml)
+
 <img src="docs/screens/remote.png" width="230" align="right" alt="Phone remote">
 
 Phone remote, voice control and an ad-free home screen for Samsung Tizen, LG webOS, Roku and Android TV / Google TV.
