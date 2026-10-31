@@ -8,8 +8,9 @@ from .androidtv import AndroidTV
 from .lg import LG
 from .roku import Roku
 from .samsung import Samsung
+from .samsung_legacy import SamsungLegacy
 
-DRIVERS = {d.brand: d for d in (Samsung, LG, Roku, AndroidTV)}
+DRIVERS = {d.brand: d for d in (Samsung, LG, Roku, AndroidTV, SamsungLegacy)}
 
 
 def probe(ip, brand=None, timeout=1.0):

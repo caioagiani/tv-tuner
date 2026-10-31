@@ -562,12 +562,13 @@ document.addEventListener("keydown", e => {
 // Estado vivo: lê a cada 3 s, e logo depois de cada comando.
 // O que a TV suporta (o painel manda em S.caps); painel antigo sem caps = tudo.
 const has = c => !S.caps || S.caps.includes(c);
-const BRANDS = { samsung: "Samsung", lg: "LG", roku: "Roku", androidtv: "Android TV" };
+const BRANDS = { samsung: "Samsung", samsung_legacy: "Samsung antiga", lg: "LG", roku: "Roku", androidtv: "Android TV" };
 function paint() {
   const p = S.power || "off";
-  document.querySelector('[data-view="audio"]').style.display = has("cast") ? "" : "none";
+  for (const [v, c] of [["audio", "cast"], ["apps", "apps"], ["type", "text"]])
+    document.querySelector('[data-view="' + v + '"]').style.display = has(c) ? "" : "none";
   // Samsung sem pareamento ainda abre app e mexe no volume; a LG não faz nada.
-  $("#pairtxt").textContent = S.brand === "lg" || S.brand === "androidtv" ? "Sem pareamento: esta TV só aceita comandos depois de parear."
+  $("#pairtxt").textContent = S.brand && S.brand !== "samsung" ? "Sem pareamento: esta TV só aceita comandos depois de parear."
     : "Sem pareamento: apps e volume funcionam; setas e texto não.";
   $("#dot").className = "dot " + p;
   $("#name").textContent = S.name ? S.name.replace("Samsung ", "") : "TV";
