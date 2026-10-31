@@ -245,7 +245,7 @@
         <span class="nowart" id="nowart"><i id="nowlogo"></i></span>
         <span class="nowtx"><b id="nowtitle">—</b><small id="nowsub">Conectando…</small></span>
       </button>
-      <div id="pairbar">Sem pareamento: apps e volume funcionam; setas e texto não.<button id="pairnow">Parear</button></div>
+      <div id="pairbar"><span id="pairtxt">Sem pareamento: apps e volume funcionam; setas e texto não.</span><button id="pairnow">Parear</button></div>
       <div class="spacer"></div>
 
       <div class="deck">
@@ -511,7 +511,7 @@ async function apps() {
       b.append(label); b.style.background = bg;
       box.append(b);
     };
-    if (S.brand !== "roku") add("TV Tuner", "TvTunerHom.TvTuner", "linear-gradient(135deg,#2c2c2e,#48484a)");
+    if (!S.brand || S.brand === "samsung") add("TV Tuner", "TvTunerHom.TvTuner", "linear-gradient(135deg,#2c2c2e,#48484a)");
     list.forEach(a => add(a.name.replace(" - Music and Podcasts", ""), a.appId, BRAND[a.name] || "#2c2c2e", a.icon));
     paint();
   } catch (e) {
@@ -562,10 +562,13 @@ document.addEventListener("keydown", e => {
 // Estado vivo: lê a cada 3 s, e logo depois de cada comando.
 // O que a TV suporta (o painel manda em S.caps); painel antigo sem caps = tudo.
 const has = c => !S.caps || S.caps.includes(c);
-const BRANDS = { samsung: "Samsung", roku: "Roku" };
+const BRANDS = { samsung: "Samsung", lg: "LG", roku: "Roku" };
 function paint() {
   const p = S.power || "off";
   document.querySelector('[data-view="audio"]').style.display = has("cast") ? "" : "none";
+  // Samsung sem pareamento ainda abre app e mexe no volume; a LG não faz nada.
+  $("#pairtxt").textContent = S.brand === "lg" ? "Sem pareamento: a LG só aceita comandos depois de parear."
+    : "Sem pareamento: apps e volume funcionam; setas e texto não.";
   $("#dot").className = "dot " + p;
   $("#name").textContent = S.name ? S.name.replace("Samsung ", "") : "TV";
   const parts = [p === "on" ? "Ligada" : p === "standby" ? "Em espera" : "Desligada"];
@@ -758,7 +761,7 @@ async function loadTvs() {
 }
 function drawTvs(list) {
   const box = $("#tvlist"); box.innerHTML = "";
-  if (!list.length) box.innerHTML = '<p class="note">Nenhuma TV respondeu (Samsung ou Roku). Ela está ligada e no mesmo Wi-Fi?</p>';
+  if (!list.length) box.innerHTML = '<p class="note">Nenhuma TV respondeu (Samsung, LG ou Roku). Ela está ligada e no mesmo Wi-Fi?</p>';
   list.forEach(t => {
     const row = document.createElement("div");
     row.className = "tvrow" + (t.current ? " cur" : "");

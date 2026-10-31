@@ -252,6 +252,19 @@ MANUAL_ROKU = [
 ]
 
 
+MANUAL_LG = [
+    ("Ligar pela rede", "Configurações > Geral > Dispositivos > Dispositivos externos > Ligar a TV pelo celular "
+                        "(Mobile TV On / Ligar via Wi-Fi): ligado — o nome muda com o ano do webOS"),
+    ("Início rápido", "Configurações > Geral > Dispositivos/Sistema > Quick Start+: ligado (mantém a rede em espera e o "
+                      "painel liga a TV na hora)"),
+    ("Reconhecimento de conteúdo", "Configurações > Geral > Sistema > Informações adicionais > Live Plus: desligado"),
+    ("Anúncios e rastreio", "Configurações > Geral > Sistema > Informações adicionais > Contratos de usuário: recusar "
+                            "anúncios por interesse e recomendações"),
+    ("Modo de imagem", "Configurações > Imagem > Modo de imagem: Cinema ou Filmmaker (o Vívido exagera cor e brilho)"),
+]
+MANUAL_BY_BRAND = {"lg": MANUAL_LG, "roku": MANUAL_ROKU}
+
+
 def check_generic(ip):
     from . import drivers
     drv = drivers.get(ip)
@@ -267,13 +280,15 @@ def check_generic(ip):
         drv.current_app(drv.apps)
         out.append(_f(OK, "Controle", "a TV aceita comandos pela rede"))
     except Exception as e:
-        out.append(_f(FAIL, "Controle", str(e)))
+        out.append(_f(FAIL, "Controle", str(e), "Toque no nome da TV e em Parear; aceite na TV." if "pareada" in str(e)
+                      else None))
     return out, d
 
 
 def run(ip):
     from . import drivers
-    if drivers.brand_of(ip) != "samsung":
+    brand = drivers.brand_of(ip)
+    if brand != "samsung":
         out, d = check_generic(ip)
         with ThreadPoolExecutor(max_workers=3) as ex:
             for part in ex.map(lambda f: f(), [lambda: check_network(ip, None), check_panel]):
@@ -281,7 +296,7 @@ def run(ip):
         order = {FAIL: 0, WARN: 1, INFO: 2, OK: 3}
         out.sort(key=lambda f: order[f["status"]])
         return {"tv": ip, "at": time.strftime("%d/%m/%Y %H:%M"), "findings": out,
-                "manual": [{"title": t, "detail": dd} for t, dd in MANUAL_ROKU]}
+                "manual": [{"title": t, "detail": dd} for t, dd in MANUAL_BY_BRAND.get(brand, [])]}
     out, dev = check_tv(ip)
     with ThreadPoolExecutor(max_workers=6) as ex:
         jobs = [ex.submit(f, *a) for f, a in [

@@ -208,7 +208,8 @@ class TV:
 
     def __init__(self, ip, emit=None):
         self.ip = ip
-        self.drv = drivers.get(ip, emit)
+        self.emit = emit or (lambda kind, data: None)
+        self.drv = drivers.get(ip, self._from_driver)
         self.live = {}              # volume/mudo/mídia empurrados pelo UPnP (GENA)
         self.live_at = 0.0
         self.apps = None            # catálogo instalado, (quando, lista)
@@ -220,6 +221,19 @@ class TV:
             raise AttributeError(name)
         # key, keys, text, browser, launch, power_on, power_off, set_volume...: direto no driver.
         return getattr(self.drv, name)
+
+    def _from_driver(self, kind, data):
+        # Volume/mudo empurrados pelo próprio driver (LG) entram no cache do "vivo".
+        if kind == "live":
+            self.live.update(data)
+            self.live.setdefault("media", None)
+            self.live_at = time.time()
+            st = self.state[1]
+            if st and st.get("power") == "on":
+                st.update(data)
+                self.emit("state", st)
+            return
+        self.emit(kind, data)
 
     def installed(self):
         # Lista vazia é a TV ocupada/abrindo app, não "nenhum app": não guarda.

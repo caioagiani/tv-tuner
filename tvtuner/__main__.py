@@ -1,15 +1,15 @@
-"""tv — controle e otimização de TV pela rede (Samsung Tizen e Roku).
+"""tv — controle e otimização de TV pela rede (Samsung Tizen, LG webOS e Roku).
 
     tv discover                 acha TVs na rede (salva se houver uma só)
     tv use 192.168.1.50          escolhe a TV
     tv info                     modelo, energia, modo dev, portas
-    tv pair                     pede "Permitir" na TV e guarda o token (Samsung)
+    tv pair                     pede "Permitir" na TV e guarda a chave (Samsung, LG)
     tv key HOME VOLUP ...       envia teclas
     tv macro <nome>             roda uma sequência (tv macro sem nome lista)
     tv apps                     lista apps instalados
     tv launch <appId|nome>      abre um app
     tv text "busca"             digita no teclado virtual aberto
-    tv browser <url>            abre o navegador da TV numa URL (Samsung)
+    tv browser <url>            abre o navegador da TV numa URL (Samsung, LG)
     tv on | tv off              liga (Wake-on-LAN) / desliga
     tv doctor [--fix]           diagnóstico: o que está certo, o que ajustar
     tv panel [--pin 1234]       painel web para controlar pelo celular
@@ -50,7 +50,7 @@ def _save_tv(ip, d):
 def cmd_discover(args):
     found = drivers.scan(args.cidr)
     if not found:
-        sys.exit("Nenhuma TV respondeu (Samsung na 8001, Roku na 8060). Ela está ligada e na mesma rede?")
+        sys.exit("Nenhuma TV respondeu (Samsung na 8001, LG na 3000/3001, Roku na 8060). Ela está ligada e na mesma rede?")
     for ip, d in found:
         print(f"{ip:16} {d['brand']:8} {d['model'] or '?':22} {d['name'] or ''}  [{d['power']}]")
     if len(found) == 1 and not config.load().get("ip"):

@@ -4,10 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .. import config, discover
 from .base import ALL_CAPS, HOME_APP, Driver, Unsupported
+from .lg import LG
 from .roku import Roku
 from .samsung import Samsung
 
-DRIVERS = {d.brand: d for d in (Samsung, Roku)}
+DRIVERS = {d.brand: d for d in (Samsung, LG, Roku)}
 
 
 def probe(ip, brand=None, timeout=1.0):
@@ -25,7 +26,7 @@ def scan(cidr=None):
     if not cidr:
         cidr = str(ipaddress.ip_network(discover.local_ip() + "/24", strict=False))
     jobs = [(str(h), d) for h in ipaddress.ip_network(cidr).hosts() for d in DRIVERS.values()]
-    with ThreadPoolExecutor(max_workers=128) as ex:
+    with ThreadPoolExecutor(max_workers=256) as ex:
         hits = ex.map(lambda j: (j[0], j[1].probe(j[0], 1.0)), jobs)
         found = {}
         for ip, d in hits:
